@@ -2,18 +2,6 @@
 // Lab 7
 
 export async function onRequestPost(context) {
-  const apiKey = context.env.LINKPREVIEW_API_KEY;
-
-  if (!apiKey) {
-    return new Response(
-      JSON.stringify({ message: 'Missing LinkPreview API key on server.' }),
-      {
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      }
-    );
-  }
-
   let requestBody;
 
   try {
@@ -40,26 +28,54 @@ export async function onRequestPost(context) {
     );
   }
 
-  const upstreamResponse = await fetch('https://api.linkpreview.net', {
-    method: 'POST',
+  const apiUrl = new URL('https://api.microlink.io');
+  apiUrl.searchParams.set('url', url);
+
+  const upstreamResponse = await fetch(apiUrl.toString(), {
+    method: 'GET',
     headers: {
-      'Content-Type': 'application/json',
       'Accept': 'application/json',
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36',
-      'X-Linkpreview-Api-Key': apiKey
-    },
-    body: JSON.stringify({ q: url })
-  });
-
-  const responseText = await upstreamResponse.text();
-
-  return new Response(responseText, {
-    status: upstreamResponse.status,
-    headers: {
-      'Content-Type': 'application/json',
-      'Cache-Control': 'no-store'
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36'
     }
   });
+
+  const microlinkPayload = await upstreamResponse.json();
+
+  if (!upstreamResponse.ok || microlinkPayload?.status !== 'success') {
+    const message =
+      microlinkPayload?.data?.message ||
+      microlinkPayload?.message ||
+      'Microlink preview request failed.';
+
+    return new Response(
+      JSON.stringify({ message }),
+      {
+        status: upstreamResponse.status || 500,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store'
+        }
+      }
+    );
+  }
+
+  const data = microlinkPayload.data || {};
+
+  return new Response(
+    JSON.stringify({
+      title: data.title || url,
+      description: data.description || '',
+      image: data.image?.url || '',
+      url: data.url || url
+    }),
+    {
+      status: 200,
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store'
+      }
+    }
+  );
 }
 
 
