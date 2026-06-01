@@ -2,6 +2,18 @@
 // Lab 7
 
 export async function onRequestPost(context) {
+  const appId = context.env.OPENGRAPH_APP_ID;
+
+  if (!appId) {
+    return new Response(
+      JSON.stringify({ message: 'Missing OpenGraph.io App ID on server.' }),
+      {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      }
+    );
+  }
+
   let requestBody;
 
   try {
@@ -28,10 +40,10 @@ export async function onRequestPost(context) {
     );
   }
 
-  const apiUrl = new URL('https://api.microlink.io');
-  apiUrl.searchParams.set('url', url);
+  const encodedUrl = encodeURIComponent(url);
+  const apiUrl = `https://opengraph.io/api/3.0/site/${encodedUrl}?app_id=${appId}`;
 
-  const upstreamResponse = await fetch(apiUrl.toString(), {
+  const upstreamResponse = await fetch(apiUrl, {
     method: 'GET',
     headers: {
       'Accept': 'application/json',
@@ -39,13 +51,13 @@ export async function onRequestPost(context) {
     }
   });
 
-  const microlinkPayload = await upstreamResponse.json();
+  const payload = await upstreamResponse.json();
 
-  if (!upstreamResponse.ok || microlinkPayload?.status !== 'success') {
+  if (!upstreamResponse.ok) {
     const message =
-      microlinkPayload?.data?.message ||
-      microlinkPayload?.message ||
-      'Microlink preview request failed.';
+      payload?.error ||
+      payload?.message ||
+      'OpenGraph.io preview request failed.';
 
     return new Response(
       JSON.stringify({ message }),
@@ -59,14 +71,15 @@ export async function onRequestPost(context) {
     );
   }
 
-  const data = microlinkPayload.data || {};
+  const graph = payload?.hybridGraph || {};
+  const openGraphImage = payload?.openGraph?.image?.url || '';
 
   return new Response(
     JSON.stringify({
-      title: data.title || url,
-      description: data.description || '',
-      image: data.image?.url || '',
-      url: data.url || url
+      title: graph.title || url,
+      description: graph.description || '',
+      image: graph.image || openGraphImage || '',
+      url: graph.url || url
     }),
     {
       status: 200,
